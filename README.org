@@ -1,0 +1,20 @@
+#+title: errand
+#+author: David Álvarez Rosa
+#+email: david@alvarezrosa.com
+#+language: en
+
+Run Claude Code errands on workers from Emacs.
+
+=M-x errand-agents= opens Claude's agent view for the current project.
+
+A worker receives your current commit, and its agents' branches are
+fetched back as =errand-HOST/worktree-*=.  With =C-u=, it prompts for a
+worker.
+
+#+begin_src emacs-lisp
+(use-package errand
+  :vc (:url "https://github.com/david-alvarez-rosa/errand")
+  :custom (errand-workers '("local" "homelab")))
+#+end_src
+
+Requires Emacs 29.1 and ghostel.
