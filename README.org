@@ -18,3 +18,7 @@ worker.
 #+end_src
 
 Requires Emacs 29.1 and ghostel.
+
+#+html: <br />
+
+With :heart: by [[https://david.alvarezrosa.com][David Álvarez Rosa]].
