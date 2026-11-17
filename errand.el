@@ -27,12 +27,11 @@
 
 ;;; Commentary:
 
-;; `errand-agents' opens Claude's agent view for a project.el project
-;; on this machine or on an SSH host.  Each host is a Git remote named
-;; `errand-HOST': the current commit is pushed to it and its agents'
-;; branches are fetched back.
+;; `errand-agents' opens Claude's agent view for a project, locally or
+;; on an SSH host.  Each host is a Git remote `errand-HOST': HEAD is
+;; pushed to it and its agents' branches are fetched back.
 ;;
-;; A remote worker needs git, python3, rsync and Claude Code, with
+;; Remote workers need git, python3, rsync and Claude Code, with
 ;; CLAUDE_CONFIG_DIR set.
 
 ;;; Code:
@@ -48,16 +47,16 @@
   :group 'tools)
 
 (defcustom errand-workers '("local")
-  "Workers that can run errands, the first being the default.
-\"local\" is this machine; any other name is an SSH host."
+  "Errand workers, default first.
+\"local\" is this machine; other names are SSH hosts."
   :type '(repeat string))
 
 (defcustom errand-directory "dev"
-  "Directory under the remote home that holds one clone per project."
+  "Directory under the remote home holding the project clones."
   :type 'string)
 
 (defcustom errand-claude "~/.local/bin/claude"
-  "Claude Code executable, at the same path on every worker."
+  "Claude Code executable, same path on every worker."
   :type 'string)
 
 (defcustom errand-claude-args '("--dangerously-skip-permissions")
@@ -65,10 +64,10 @@
   :type '(repeat string))
 
 (defconst errand--start-branch "errand-start"
-  "Branch on a worker that receives the current commit.")
+  "Worker branch receiving the current commit.")
 
 (defconst errand--settings "{\"worktree\":{\"baseRef\":\"head\"}}"
-  "Claude settings making agents branch from the checked out commit.")
+  "Claude settings making agents branch from HEAD.")
 
 (defconst errand--setup-script
   "set -eu
@@ -91,10 +90,10 @@ if not project.get('hasTrustDialogAccepted'):
         json.dump(config, f, indent=2)
     os.replace(path + '.errand', path)
 EOF"
-  "Shell script creating the clone named by $1 and trusting it in Claude.")
+  "Shell script creating clone $1 and trusting it in Claude.")
 
 (defun errand--root ()
-  "Return the root of the current local project."
+  "Return the current local project's root."
   (let ((root (project-root (project-current t))))
     (when (file-remote-p root)
       (user-error "Errand needs a local project"))
@@ -105,7 +104,7 @@ EOF"
   (file-name-nondirectory (directory-file-name (expand-file-name root))))
 
 (defun errand--dir (name)
-  "Return the directory of project NAME on a remote worker."
+  "Return project NAME's directory on a remote worker."
   (format "%s/%s" errand-directory name))
 
 (defun errand--local-p (worker)
@@ -113,7 +112,7 @@ EOF"
   (equal worker "local"))
 
 (defun errand--remote (worker)
-  "Return the name of the Git remote for WORKER."
+  "Return the Git remote name for WORKER."
   (format "errand-%s" worker))
 
 (defun errand--read-worker (prompt)
@@ -128,7 +127,7 @@ EOF"
   (apply #'process-lines-ignore-status "git" args))
 
 (defun errand--check (root)
-  "Signal an error unless ROOT is inside a Git work tree."
+  "Signal an error unless ROOT is in a Git work tree."
   (unless (eq 0 (call-process "git" nil nil nil "rev-parse" "--is-inside-work-tree"))
     (user-error "Not a Git repository: %s" root)))
 
@@ -157,7 +156,7 @@ FLAGS is a string of extra ssh flags."
 
 (defun errand--sync-command (worker name)
   "Return a shell command syncing project NAME with WORKER.
-It sends HEAD to WORKER and fetches its agents' branches."
+It pushes HEAD and fetches the agents' branches."
   (let ((dir (shell-quote-argument (errand--dir name)))
         (remote (shell-quote-argument (errand--remote worker))))
     (format "%s && git push -q --no-verify -f %s HEAD:refs/heads/%s && %s && %s && git fetch -q --prune %s"
@@ -172,7 +171,7 @@ It sends HEAD to WORKER and fetches its agents' branches."
             remote)))
 
 (defun errand--live-p (buffer-name)
-  "Return non-nil if the process of BUFFER-NAME is live."
+  "Return non-nil if BUFFER-NAME has a live process."
   (when-let* ((buffer (get-buffer buffer-name)))
     (process-live-p (get-buffer-process buffer))))
 
@@ -183,7 +182,6 @@ It sends HEAD to WORKER and fetches its agents' branches."
     (kill-buffer buffer))
   (let ((ghostel-shell (list "sh" "-c" (concat command " || echo 'errand: failed'"))))
     (with-current-buffer (ghostel-create buffer-name '((display-buffer-same-window)))
-      ;; Keep a failed run readable.
       (setq-local ghostel-kill-buffer-on-exit nil))))
 
 (defun errand--sync-in-background (worker name)
@@ -200,9 +198,8 @@ It sends HEAD to WORKER and fetches its agents' branches."
 ;;;###autoload
 (defun errand-agents (&optional worker)
   "Open this project's agent view on WORKER.
-WORKER defaults to the first of `errand-workers'; with a prefix
-argument, prompt for one.  A remote worker first receives the current
-commit, and its agents' branches are fetched."
+WORKER defaults to the first of `errand-workers'; a prefix argument
+prompts for one.  Remote workers are synced first."
   (interactive (list (errand--read-worker current-prefix-arg)))
   (let* ((default-directory (errand--root))
          (worker (or worker (errand--read-worker nil)))
